@@ -66,6 +66,36 @@ default_init(void) {
 }
 
 static void
+dump_list() {
+    // check order
+    list_entry_t *le = &free_list;
+    cprintf("Start list dump:\n");
+    while ((le = list_next(le)) != &free_list) {
+        struct Page *p = le2page(le, page_link);
+        cprintf("Page %x property %d\n", p, p->property);
+    }
+}
+
+static void
+check_order() {
+    // check order
+    list_entry_t *le = &free_list;
+    struct Page *before = NULL;
+    while ((le = list_next(le)) != &free_list) {
+        struct Page *p = le2page(le, page_link);
+        if (before != NULL)
+            if (before + before->property > p) {
+                cprintf("Warning: disordered %x+%d=%x > %x\n",
+                        before, before->property,
+                        before + before->property, p);
+                dump_list();
+                return ;
+            }
+        before = p;
+    }
+}
+
+static void
 default_init_memmap(struct Page *base, size_t n) {
     assert(n > 0);
     struct Page *p = base;
@@ -77,11 +107,14 @@ default_init_memmap(struct Page *base, size_t n) {
     base->property = n;
     SetPageProperty(base);
     nr_free += n;
-    list_add(&free_list, &(base->page_link));
+    list_add_after(&free_list, &(base->page_link));
+    check_order();
+    //dump_list();
 }
 
 static struct Page *
 default_alloc_pages(size_t n) {
+    // cprintf("Try to alloc %d pages nr_free %d\n", n, nr_free);
     assert(n > 0);
     if (n > nr_free) {
         return NULL;
@@ -100,16 +133,21 @@ default_alloc_pages(size_t n) {
         if (page->property > n) {
             struct Page *p = page + n;
             p->property = page->property - n;
-            list_add(&free_list, &(p->page_link));
-    }
+            SetPageProperty(p);
+            list_add_after(page->page_link.prev, &(p->page_link));
+        }
         nr_free -= n;
         ClearPageProperty(page);
     }
+    check_order();
+    // cprintf("alloc after dump\n");
+    // dump_list();
     return page;
 }
 
 static void
 default_free_pages(struct Page *base, size_t n) {
+    // cprintf("Try to free %x %d\n", base, n);
     assert(n > 0);
     struct Page *p = base;
     for (; p != base + n; p ++) {
@@ -117,6 +155,8 @@ default_free_pages(struct Page *base, size_t n) {
         p->flags = 0;
         set_page_ref(p, 0);
     }
+    // if (base->property != n)
+    //    cprintf("Attention: property %d n %d not equal\n", base->property, n);
     base->property = n;
     SetPageProperty(base);
     list_entry_t *le = list_next(&free_list);
@@ -135,8 +175,27 @@ default_free_pages(struct Page *base, size_t n) {
             list_del(&(p->page_link));
         }
     }
+    le = &free_list;
+    if (list_empty(&free_list))
+        list_add(&free_list, &(base->page_link));
+    else if (base < le2page(list_next(le), page_link))
+        list_add_after(&free_list, &(base->page_link));
+    else if (base > le2page(list_prev(le), page_link))
+        list_add_before(&free_list, &(base->page_link));
+    else {
+        bool no_add = 0;
+        while ((le = list_next(le)) != &free_list) {
+            if (le2page(le, page_link) > base) {
+                list_add_before(le, &(base->page_link));
+                no_add = 1;
+            }
+        }
+        if (!no_add)
+            cprintf("Failed to add %x %d\n", base, base->property);
+    }
     nr_free += n;
-    list_add(&free_list, &(base->page_link));
+    check_order();
+    // dump_list();
 }
 
 static size_t
