@@ -85,10 +85,10 @@ check_order() {
         struct Page *p = le2page(le, page_link);
         if (before != NULL)
             if (before + before->property > p) {
-                cprintf("Warning: disordered %x+%d=%x > %x\n",
+                dump_list();
+                panic("Warning: disordered %x+%d=%x > %x\n",
                         before, before->property,
                         before + before->property, p);
-                dump_list();
                 return ;
             }
         before = p;
@@ -109,12 +109,10 @@ default_init_memmap(struct Page *base, size_t n) {
     nr_free += n;
     list_add_after(&free_list, &(base->page_link));
     check_order();
-    //dump_list();
 }
 
 static struct Page *
 default_alloc_pages(size_t n) {
-    // cprintf("Try to alloc %d pages nr_free %d\n", n, nr_free);
     assert(n > 0);
     if (n > nr_free) {
         return NULL;
@@ -140,8 +138,6 @@ default_alloc_pages(size_t n) {
         ClearPageProperty(page);
     }
     check_order();
-    // cprintf("alloc after dump\n");
-    // dump_list();
     return page;
 }
 
@@ -191,11 +187,10 @@ default_free_pages(struct Page *base, size_t n) {
             }
         }
         if (!no_add)
-            cprintf("Failed to add %x %d\n", base, base->property);
+            panic("Failed to add %x %d\n", base, base->property);
     }
     nr_free += n;
     check_order();
-    // dump_list();
 }
 
 static size_t

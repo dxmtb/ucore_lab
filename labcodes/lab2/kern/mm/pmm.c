@@ -98,7 +98,7 @@ static inline void
 lgdt(struct pseudodesc *pd) {
     asm volatile ("lgdt (%0)" :: "r" (pd));
     //panic("i just want to");
-    while(1);
+    //while(1);
     asm volatile ("movw %%ax, %%gs" :: "a" (USER_DS));
     asm volatile ("movw %%ax, %%fs" :: "a" (USER_DS));
     asm volatile ("movw %%ax, %%es" :: "a" (KERNEL_DS));
@@ -259,21 +259,14 @@ enable_paging(void) {
 //  perm: permission of this memory  
 static void
 boot_map_segment(pde_t *pgdir, uintptr_t la, size_t size, uintptr_t pa, uint32_t perm) {
-    cprintf("boot_map_segment %x %x %d %x %x\n", pgdir, la, size, pa, perm);
     assert(PGOFF(la) == PGOFF(pa));
     size_t n = ROUNDUP(size + PGOFF(la), PGSIZE) / PGSIZE;
     la = ROUNDDOWN(la, PGSIZE);
     pa = ROUNDDOWN(pa, PGSIZE);
-    //cprintf("%x %x %x\n", pa, la, get_pte(pgdir, la, 1));
-    bool first = 1;
     for (; n > 0; n --, la += PGSIZE, pa += PGSIZE) {
         pte_t *ptep = get_pte(pgdir, la, 1);
         assert(ptep != NULL);
         *ptep = pa | PTE_P | perm;
-        if (first) {
-            test_get_pte("test_boot_map_segment", pgdir, la);
-            first = 0;
-        }
     }
 }
 
@@ -312,7 +305,7 @@ pmm_init(void) {
     memset(boot_pgdir, 0, PGSIZE);
     boot_cr3 = PADDR(boot_pgdir);
 
-    // check_pgdir();
+    check_pgdir();
 
     static_assert(KERNBASE % PTSIZE == 0 && KERNTOP % PTSIZE == 0);
 
@@ -330,15 +323,11 @@ pmm_init(void) {
     boot_pgdir[0] = boot_pgdir[PDX(KERNBASE)];
 
     enable_paging();
-    test_get_pte("test", boot_pgdir, 0xc0000000);
-    cprintf("%x\n", *((int32_t*)(0xc01bb000)));
 
     //reload gdt(third time,the last time) to map all physical memory
     //virtual_addr 0~4G=liear_addr 0~4G
     //then set kernel stack(ss:esp) in TSS, setup TSS in gdt, load TSS
     gdt_init();
-    test_get_pte("test", boot_pgdir, 0xc0000000);
-    cprintf("%x\n", *((int32_t*)(0xc01bb000)));
 
     //disable the map of virtual_addr 0~4M
     boot_pgdir[0] = 0;
@@ -351,7 +340,6 @@ pmm_init(void) {
 
 }
 
-static int DEBUG = 0;
 //get_pte - get pte and return the kernel virtual address of this pte for la
 //        - if the PT contians this pte didn't exist, alloc a page for PT
 // parameter:
@@ -382,14 +370,11 @@ get_pte(pde_t *pgdir, uintptr_t la, bool create) {
      *   PTE_W           0x002                   // page table/directory entry flags bit : Writeable
      *   PTE_U           0x004                   // page table/directory entry flags bit : User can access
      */
-    if (DEBUG)
-      cprintf("get_pte %x %x %d\n", pgdir, la, create);
     // (1) find page directory entry
     pde_t *pdep = pgdir + PDX(la);
     pte_t *ret = NULL;
     // (2) check if entry is not present
     if (!(*pdep & PTE_P)) {
-        assert(!DEBUG);
         // (3) check if creating is needed, then alloc page for page table
         if (!create)
             return NULL;
@@ -404,26 +389,10 @@ get_pte(pde_t *pgdir, uintptr_t la, bool create) {
         // (7) set page directory entry's permission
         assert(!(pa & 0xFFF));
         *pdep = pa | PTE_U | PTE_W | PTE_P;
-        if (DEBUG)
-            cprintf("Create pa %x\n", pa);
     }
-    if (DEBUG)
-        cprintf("Pa %x, %x, %x %x, %x\n", pdep, *pdep, (pte_t *)(*pdep & ~0x7), PTX(la), (pte_t *)(*pdep & ~0x7) + PTX(la));
-    ret = KADDR((pte_t *)(*pdep & ~0x7) + PTX(la));
-    // assert(!((uintptr_t)(ret) & 0xFFF));
-    if (DEBUG)
-        cprintf("ret %x\n", ret);
+    ret = KADDR((pte_t *)(*pdep & ~0xFFF) + PTX(la));
     return ret;          // (8) return page table entry
 }
-
-void
-test_get_pte(char *s, pde_t *pgdir, uintptr_t la) {
-    DEBUG = 1;
-    pte_t *ret = get_pte(pgdir, la, 0);
-    cprintf("%s %x %x %x %x\n", s, pgdir, la, ret, *ret);
-    DEBUG = 0;
-}
-
 
 //get_page - get related Page struct for linear address la using PDT pgdir
 struct Page *
@@ -583,8 +552,6 @@ check_boot_pgdir(void) {
     int i;
     for (i = 0; i < npage; i += PGSIZE) {
         assert((ptep = get_pte(boot_pgdir, (uintptr_t)KADDR(i), 0)) != NULL);
-        test_get_pte("check_pgdir", boot_pgdir, KADDR(i));
-        // cprintf("%d %x %x %x %x\n", i, KADDR(i), ptep, *ptep, PTE_ADDR(*ptep));
         assert(PTE_ADDR(*ptep) == i);
     }
 
