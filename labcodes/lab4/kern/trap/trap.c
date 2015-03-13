@@ -48,6 +48,16 @@ idt_init(void) {
       *     You don't know the meaning of this instruction? just google it! and check the libs/x86.h to know more.
       *     Notice: the argument of lidt is idt_pd. try to find it!
       */
+    extern uintptr_t __vectors[];
+    int i;
+    for (i = 0; i < 256; i++) {
+        if (i != T_SYSCALL) {
+            SETGATE(idt[i], 0, 8, __vectors[i], 0);
+        } else {
+            SETGATE(idt[i], 1, 8, __vectors[i], 3);
+        }
+    }
+    lidt(&idt_pd);
 }
 
 static const char *
@@ -222,5 +232,11 @@ void
 trap(struct trapframe *tf) {
     // dispatch based on what type of trap occurred
     trap_dispatch(tf);
+    static int count = 0;
+    count++;
+    if (count % 100 == 0) {
+        print_ticks();
+        count = 0;
+    }
 }
 
