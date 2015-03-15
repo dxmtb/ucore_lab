@@ -184,6 +184,7 @@ default_free_pages(struct Page *base, size_t n) {
             if (le2page(le, page_link) > base) {
                 list_add_before(le, &(base->page_link));
                 no_add = 1;
+                break;
             }
         }
         if (!no_add)
