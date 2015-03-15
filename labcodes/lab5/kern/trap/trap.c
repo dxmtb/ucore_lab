@@ -56,6 +56,16 @@ idt_init(void) {
      /* LAB5 YOUR CODE */ 
      //you should update your lab1 code (just add ONE or TWO lines of code), let user app to use syscall to get the service of ucore
      //so you should setup the syscall interrupt gate in here
+    extern uintptr_t __vectors[];
+    int i;
+    for (i = 0; i < 256; i++) {
+        if (i != T_SYSCALL) {
+            SETGATE(idt[i], 0, 8, __vectors[i], 0);
+        } else {
+            SETGATE(idt[i], 1, 8, __vectors[i], 3);
+        }
+    }
+    lidt(&idt_pd);
 }
 
 static const char *
@@ -185,6 +195,7 @@ extern struct mm_struct *check_mm_struct;
 static void
 trap_dispatch(struct trapframe *tf) {
     char c;
+    static int count = 0;
 
     int ret=0;
 
@@ -223,7 +234,12 @@ trap_dispatch(struct trapframe *tf) {
         /* you should upate you lab1 code (just add ONE or TWO lines of code):
          *    Every TICK_NUM cycle, you should set current process's current->need_resched = 1
          */
-  
+        count++;
+        if (count % TICK_NUM == 0) {
+            // print_ticks(); //or it will panic
+            count = 0;
+            current->need_resched = 1;
+        }
         break;
     case IRQ_OFFSET + IRQ_COM1:
         c = cons_getc();
