@@ -243,10 +243,10 @@ trap_dispatch(struct trapframe *tf) {
          *    You can use one funcitons to finish all these things.
          */
         ticks++;
+        run_timer_list();
         if (ticks % TICK_NUM == 0) {
             // print_ticks(); //or it will panic
             current->need_resched = 1;
-            run_timer_list();
         }
         break;
     case IRQ_OFFSET + IRQ_COM1:
