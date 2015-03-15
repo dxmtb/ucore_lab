@@ -196,7 +196,6 @@ extern struct mm_struct *check_mm_struct;
 static void
 trap_dispatch(struct trapframe *tf) {
     char c;
-    static int count = 0;
 
     int ret=0;
 
@@ -243,10 +242,9 @@ trap_dispatch(struct trapframe *tf) {
          *    Every tick, you should update the system time, iterate the timers, and trigger the timers which are end to call scheduler.
          *    You can use one funcitons to finish all these things.
          */
-        count++;
-        if (count % TICK_NUM == 0) {
+        ticks++;
+        if (ticks % TICK_NUM == 0) {
             // print_ticks(); //or it will panic
-            count = 0;
             current->need_resched = 1;
             run_timer_list();
         }
