@@ -102,6 +102,12 @@ ls(const char *path) {
 
 int
 main(int argc, char **argv) {
+    printf("Argc %d argvp %x\n", argc, argv);
+    printf("Argcp %x argvpp %x\n", &argc, &argv);
+    int j;
+    for (j = 0; j < argc; j++)
+        printf("Argv %d: %x\n", j, &argv[j]);
+    printf("Done\n");
     if (argc == 1) {
         return ls(".");
     }
