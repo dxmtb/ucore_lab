@@ -454,10 +454,14 @@ do_pgfault(struct mm_struct *mm, uint32_t error_code, uintptr_t addr) {
     /*LAB3 EXERCISE 1: 2012011346*/
     //(1) try to find a pte, if pte's PT(Page Table) isn't existed, then create a PT.
     ptep = get_pte(mm->pgdir, addr, 1);
+    assert(ptep != NULL);
     if (*ptep == 0) {
         //(2) if the phy addr isn't exist, then alloc a page & map the phy addr with logical addr
         perm |= PTE_P;
-        pgdir_alloc_page(mm->pgdir, addr, perm);
+        if (pgdir_alloc_page(mm->pgdir, addr, perm) == NULL) {
+            cprintf("do_pgfault failed: pgdir_alloc_page");
+            goto failed;
+        }
     }
     else {
     /*LAB3 EXERCISE 2: 2012011346
@@ -480,20 +484,33 @@ do_pgfault(struct mm_struct *mm, uint32_t error_code, uintptr_t addr) {
 		  2) *ptep & PTE_P == 0 & but *ptep!=0, it means this pte is a  swap entry.
 		     We should add the LAB3's results here.
      */
-        if(swap_init_ok) {
-            struct Page *page=NULL;
-            //(1）According to the mm AND addr, try to load the content of right disk page
-            //    into the memory which page managed.
-            swap_in(mm, addr, &page);
-            //(2) According to the mm, addr AND page, setup the map of phy addr <---> logical addr
-            page_insert(mm->pgdir, page, addr, perm);
-            //(3) make the page swappable.
-            swap_map_swappable(mm, addr, page, 0); //swap_in not used
-                                    //(4) [NOTICE]: you myabe need to update your lab3's implementation for LAB5's normal execution.
-        }
-        else {
-            cprintf("no swap_init_ok but ptep is %x, failed\n",*ptep);
-            goto failed;
+        if (*ptep & PTE_P) {
+            panic("write a readonly page");
+        } else {
+            if(swap_init_ok) {
+                struct Page *page=NULL;
+                //(1）According to the mm AND addr, try to load the content of right disk page
+                //    into the memory which page managed.
+                if ((ret = swap_in(mm, addr, &page)) != 0) {
+                    cprintf("do_pgfault failed: swap_in");
+                    goto failed;
+                }
+                //(2) According to the mm, addr AND page, setup the map of phy addr <---> logical addr
+                if ((ret = page_insert(mm->pgdir, page, addr, perm)) != 0) {
+                    cprintf("do_pgfault failed: page_insert");
+                    goto failed;
+                }
+                //(3) make the page swappable.
+                if ((ret = swap_map_swappable(mm, addr, page, 0)) != 0) { //swap_in not used
+                    cprintf("do_pgfault failed: swap_map_swappable");
+                    goto failed;
+                }
+                //(4) [NOTICE]: you myabe need to update your lab3's implementation for LAB5's normal execution.
+            }
+            else {
+                cprintf("no swap_init_ok but ptep is %x, failed\n",*ptep);
+                goto failed;
+            }
         }
    }
    ret = 0;

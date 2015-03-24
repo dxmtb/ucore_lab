@@ -394,6 +394,8 @@ get_pte(pde_t *pgdir, uintptr_t la, bool create) {
             return NULL;
         // CAUTION: this page is used for page table, not for common data page
         struct Page *page = alloc_page();
+        if (!page)
+            return NULL;
         // (4) set page reference
         set_page_ref(page, 1);
         // (5) get linear address of page

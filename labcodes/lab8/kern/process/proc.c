@@ -456,7 +456,6 @@ do_fork(uint32_t clone_flags, uintptr_t stack, struct trapframe *tf) {
     proc = alloc_proc();
     if (proc == NULL)
         goto fork_out;
-    proc->pid = get_pid();
     assert(current->wait_state == 0);
     proc->parent = current;
     //    2. call setup_kstack to allocate a kernel stack for child process
@@ -466,12 +465,18 @@ do_fork(uint32_t clone_flags, uintptr_t stack, struct trapframe *tf) {
     if (copy_mm(clone_flags, proc) != 0)
         goto bad_fork_cleanup_kstack;
     //    4. call copy_thread to setup tf & context in proc_struct
-    copy_thread(proc, stack, tf);
     if (copy_files(clone_flags, proc) != 0)
         goto bad_fork_cleanup_fs;
+    copy_thread(proc, stack, tf);
     //    5. insert proc_struct into hash_list && proc_list
-    hash_proc(proc);
-    set_links(proc);
+    bool intr_flag;
+    local_intr_save(intr_flag);
+    {
+        proc->pid = get_pid();
+        hash_proc(proc);
+        set_links(proc);
+    }
+    local_intr_restore(intr_flag);
     //    6. call wakup_proc to make the new child process RUNNABLE
     wakeup_proc(proc);
     //    7. set ret vaule using child proc's pid
@@ -612,14 +617,15 @@ load_icode(int fd, int argc, char **kargv) {
     //(3) copy TEXT/DATA section, build BSS parts in binary to memory space of process
     struct stat stat;
     if (sysfile_fstat(fd, &stat) != 0)
-        goto bad_pgdir_cleanup_mm;
+        goto bad_elf_cleanup_pgdir;
     char *binary;
     size_t size = stat.st_size;
-    cprintf("Read %d size %d\n", fd, size);
+    // cprintf("Read %d size %d\n", fd, size);
     if ((binary = kmalloc(size)) == NULL)
-        goto bad_pgdir_cleanup_mm;
+        goto bad_elf_cleanup_pgdir;
     if (load_icode_read(fd, binary, size, 0) != 0)
-        goto bad_pgdir_cleanup_mm;
+        goto bad_elf_cleanup_pgdir;
+    sysfile_close(fd);
 //    cprintf("Buf:%x", binary);
 //    int i;
 //    for (i = 1; i <= size; i++) {
