@@ -14,10 +14,15 @@
 #include <proc.h>
 #include <fs.h>
 #include <kmonitor.h>
+#include <mp.h>
 
 int kern_init(void) __attribute__((noreturn));
 void grade_backtrace(void);
 static void lab1_switch_test(void);
+extern int      ismp;
+extern pde_t *boot_pgdir;
+extern volatile struct ioapic *ioapic;
+
 
 int
 kern_init(void) {
@@ -34,8 +39,24 @@ kern_init(void) {
     grade_backtrace();
 
     pmm_init();                 // init physical memory management
+    mp_init();
+    if (lapic) {
+        pte_t *ptep = get_pte(boot_pgdir, KERNTOP, 1);
+        assert(ptep != NULL);
+        *ptep = (int32_t)lapic | PTE_P | PTE_W;
+        lapic = KERNTOP;
+    }
+    lapic_init();
 
     pic_init();                 // init interrupt controller
+    if (ismp) {
+#define IOAPIC  0xFEC00000   // Default physical address of IO APIC
+        pte_t *ptep = get_pte(boot_pgdir, KERNTOP + PGSIZE, 1);
+        assert(ptep != NULL);
+        *ptep = IOAPIC | PTE_P | PTE_W;
+        ioapic = KERNTOP + PGSIZE;
+    }
+    ioapic_init();              // another interrupt controller
     idt_init();                 // init interrupt descriptor table
 
     vmm_init();                 // init virtual memory management
@@ -46,7 +67,10 @@ kern_init(void) {
     swap_init();                // init swap
     fs_init();                  // init fs
     
-    clock_init();               // init clock interrupt
+    if(!ismp)
+        clock_init();           // init clock interrupt
+    startothers();   // start other processors
+
     intr_enable();              // enable irq interrupt
 
     //LAB1: CAHLLENGE 1 If you try to do it, uncomment lab1_switch_test()
@@ -54,6 +78,64 @@ kern_init(void) {
     //lab1_switch_test();
     
     cpu_idle();                 // run idle process
+}
+
+// Other CPUs jump here from entryother.S.
+void
+mpenter(void)
+{
+    pmm_init_ap();
+    lapic_init();
+    mpmain();
+}
+
+// Common CPU setup code.
+void
+mpmain(void)
+{
+  //cprintf("cpu%d: starting\n", cpu->id);
+    cprintf("i am a cpu\n");
+    while(1);
+//  idtinit();       // load idt register
+//  xchg(&cpu->started, 1); // tell startothers() we're up
+//  scheduler();     // start running processes
+}
+
+// Start the non-boot (AP) processors.
+void
+startothers(void)
+{
+    cprintf("Try to startothers\n");
+    extern uint8_t _binary_obj_entryother_o_start[], _binary_obj_entryother_o_size[];
+    uint8_t *code;
+    struct cpu *c;
+    char *stack;
+
+    // Write entry code to unused memory at 0x7000.
+    // The linker has placed the image of entryother.S in
+    // _binary_entryother_start.
+    code = KADDR(0x7000);
+    memmove(code, _binary_obj_entryother_o_start, (uint32_t)_binary_obj_entryother_o_size);
+
+    for(c = cpus; c < cpus+ncpu; c++){
+        if(c == cpus+cpunum())  // We've started already.
+            continue;
+        cprintf("Try to start cpu %x\n", c);
+
+        // Tell entryother.S what stack to use, where to enter, and what
+        // pgdir to use. We cannot use kpgdir yet, because the AP processor
+        // is running in low  memory, so we use entrypgdir for the APs too.
+        stack = kmalloc(KSTACKSIZE);
+        *(void**)(code-4) = stack + KSTACKSIZE;
+        *(void**)(code-8) = mpenter;
+        *(int**)(code-12) = (void *) PADDR(boot_pgdir);
+
+        lapicstartap(c->id, PADDR(code));
+
+        // wait for cpu to finish mpmain()
+        while(c->started == 0) ;
+    }
+    while(1);
 }
 
 void __attribute__((noinline))

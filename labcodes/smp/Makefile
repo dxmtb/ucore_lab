@@ -153,12 +153,20 @@ endef
 $(foreach p,$(call read_packet,uprog),$(eval $(call uprog_ld,$(p))))
 
 # -------------------------------------------------------------------
+entryother = $(call toobj,entryother)
+$(entryother): $(call toobj,kern/init/entryother.S)
+	$(V)$(LD) $(LDFLAGS) -N -e start -Ttext 0x7000 -o $(call toobj,bootblockother) $^
+	@$(OBJCOPY) -S -O binary -j .text $(call toobj,bootblockother) $(call toobj,entryother)
+	@$(OBJDUMP) -S $(call toobj,bootblockother) > $(call asmfile,entryother)
+
+# -------------------------------------------------------------------
 # kernel
 
 KINCLUDE	+= kern/debug/ \
 			   kern/driver/ \
 			   kern/trap/ \
 			   kern/mm/ \
+			   kern/mp/ \
 			   kern/libs/ \
 			   kern/sync/ \
 			   kern/fs/    \
@@ -177,6 +185,7 @@ KSRCDIR		+= kern/init \
 			   kern/driver \
 			   kern/trap \
 			   kern/mm \
+			   kern/mp/ \
 			   kern/sync \
 			   kern/fs    \
 			   kern/process \
@@ -191,16 +200,16 @@ KCFLAGS		+= $(addprefix -I,$(KINCLUDE))
 
 $(call add_files_cc,$(call listf_cc,$(KSRCDIR)),kernel,$(KCFLAGS))
 
-KOBJS	= $(call read_packet,kernel libs)
+KOBJS	= $(filter-out obj/kern/init/entryother.o, $(call read_packet,kernel libs))
 
 # create kernel target
 kernel = $(call totarget,kernel)
 
 $(kernel): tools/kernel.ld
 
-$(kernel): $(KOBJS)
+$(kernel): $(KOBJS) $(entryother)
 	@echo + ld $@
-	$(V)$(LD) $(LDFLAGS) -T tools/kernel.ld -o $@ $(KOBJS)
+	$(V)$(LD) $(LDFLAGS) -T tools/kernel.ld -o $@ $(KOBJS) -b binary $(entryother)
 	@$(OBJDUMP) -S $@ > $(call asmfile,kernel)
 	@$(OBJDUMP) -t $@ | $(SED) '1,/SYMBOL TABLE/d; s/ .* / /; /^$$/d' > $(call symfile,kernel)
 
@@ -305,7 +314,7 @@ TARGETS: $(TARGETS)
 
 .DEFAULT_GOAL := TARGETS
 
-QEMUOPTS = -hda $(UCOREIMG) -drive file=$(SWAPIMG),media=disk,cache=writeback -drive file=$(SFSIMG),media=disk,cache=writeback 
+QEMUOPTS = -hda $(UCOREIMG) -drive file=$(SWAPIMG),media=disk,cache=writeback -drive file=$(SFSIMG),media=disk,cache=writeback -smp 4
 
 .PHONY: qemu qemu-nox debug debug-nox monitor
 qemu-mon: $(UCOREIMG) $(SWAPIMG) $(SFSIMG)
@@ -322,14 +331,10 @@ monitor: $(UCOREIMG) $(SWAPING) $(SFSIMG)
 TERMINAL := gnome-terminal
 
 debug: $(UCOREIMG) $(SWAPIMG) $(SFSIMG)
-	$(V)$(QEMU) -S -s -parallel stdio $(QEMUOPTS) -serial null &
-	$(V)sleep 2
-	$(V)$(TERMINAL) -e "$(GDB) -q -x tools/gdbinit"
+	$(V)$(QEMU) -S -s -parallel stdio $(QEMUOPTS) -serial null
 
 debug-nox: $(UCOREIMG) $(SWAPIMG) $(SFSIMG)
-	$(V)$(QEMU) -S -s -serial mon:stdio $(QEMUOPTS) -nographic &
-	$(V)sleep 2
-	$(V)$(TERMINAL) -e "$(GDB) -q -x tools/gdbinit"
+	$(V)$(QEMU) -S -s -serial mon:stdio $(QEMUOPTS) -nographic
 
 RUN_PREFIX	:= _binary_$(OBJDIR)_$(USER_PREFIX)
 MAKEOPTS	:= --quiet --no-print-directory

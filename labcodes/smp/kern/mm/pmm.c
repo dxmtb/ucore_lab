@@ -354,6 +354,14 @@ pmm_init(void) {
 
 }
 
+void
+pmm_init_ap() {
+    boot_pgdir[0] = boot_pgdir[PDX(KERNBASE)];
+    enable_paging();
+    gdt_init();
+    boot_pgdir[0] = 0;
+}
+
 //get_pte - get pte and return the kernel virtual address of this pte for la
 //        - if the PT contians this pte didn't exist, alloc a page for PT
 // parameter:
