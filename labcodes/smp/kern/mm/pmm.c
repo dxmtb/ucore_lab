@@ -32,7 +32,6 @@
  * mode, the x86 CPU will look in the TSS for SS0 and ESP0 and load their value
  * into SS and ESP respectively.
  * */
-static struct taskstate ts = {0};
 
 // virtual address of physicall page array
 struct Page *pages;
@@ -76,18 +75,6 @@ pde_t * const vpd = (pde_t *)PGADDR(PDX(VPT), PDX(VPT), 0);
  *   - 0x20:  user data segment
  *   - 0x28:  defined for tss, initialized in gdt_init
  * */
-static struct segdesc gdt[] = {
-    SEG_NULL,
-    [SEG_KTEXT] = SEG(STA_X | STA_R, 0x0, 0xFFFFFFFF, DPL_KERNEL),
-    [SEG_KDATA] = SEG(STA_W, 0x0, 0xFFFFFFFF, DPL_KERNEL),
-    [SEG_UTEXT] = SEG(STA_X | STA_R, 0x0, 0xFFFFFFFF, DPL_USER),
-    [SEG_UDATA] = SEG(STA_W, 0x0, 0xFFFFFFFF, DPL_USER),
-    [SEG_TSS]   = SEG_NULL,
-};
-
-static struct pseudodesc gdt_pd = {
-    sizeof(gdt) - 1, (uintptr_t)gdt
-};
 
 static void check_alloc_page(void);
 static void check_pgdir(void);
@@ -100,7 +87,7 @@ static void check_boot_pgdir(void);
 static inline void
 lgdt(struct pseudodesc *pd) {
     asm volatile ("lgdt (%0)" :: "r" (pd));
-    asm volatile ("movw %%ax, %%gs" :: "a" (USER_DS));
+//    asm volatile ("movw %%ax, %%gs" :: "a" (USER_DS));
     asm volatile ("movw %%ax, %%fs" :: "a" (USER_DS));
     asm volatile ("movw %%ax, %%es" :: "a" (KERNEL_DS));
     asm volatile ("movw %%ax, %%ds" :: "a" (KERNEL_DS));
@@ -109,31 +96,51 @@ lgdt(struct pseudodesc *pd) {
     asm volatile ("ljmp %0, $1f\n 1:\n" :: "i" (KERNEL_CS));
 }
 
-/* *
- * load_esp0 - change the ESP0 in default task state segment,
- * so that we can use different kernel stack when we trap frame
- * user to kernel.
- * */
 void
 load_esp0(uintptr_t esp0) {
-    ts.ts_esp0 = esp0;
+    cpus[cpunum()].ts.ts_esp0 = esp0;
 }
 
 /* gdt_init - initialize the default GDT and TSS */
 static void
 gdt_init(void) {
-    // set boot kernel stack and default SS0
-    load_esp0((uintptr_t)bootstacktop);
-    ts.ts_ss0 = KERNEL_DS;
+    int cpun = cpunum();
+    struct cpu *c = &cpus[cpun];
+    struct taskstate *ts = &(c->ts);
+    memset(ts, 0, sizeof(struct taskstate));
 
+    // set boot kernel stack and default SS0
+    if (cpun == 0)
+        load_esp0((uintptr_t)bootstacktop);
+    else
+        load_esp0((uintptr_t)(*(void**)(KADDR(0x7000)-4)));
+    ts->ts_ss0 = KERNEL_DS;
+
+    struct segdesc *gdt = c->gdt;
+    gdt[0] = SEG_NULL,
+    gdt[SEG_KTEXT] = SEG(STA_X | STA_R, 0x0, 0xFFFFFFFF, DPL_KERNEL),
+    gdt[SEG_KDATA] = SEG(STA_W, 0x0, 0xFFFFFFFF, DPL_KERNEL),
+    gdt[SEG_UTEXT] = SEG(STA_X | STA_R, 0x0, 0xFFFFFFFF, DPL_USER),
+    gdt[SEG_UDATA] = SEG(STA_W, 0x0, 0xFFFFFFFF, DPL_USER),
     // initialize the TSS filed of the gdt
-    gdt[SEG_TSS] = SEGTSS(STS_T32A, (uintptr_t)&ts, sizeof(ts), DPL_KERNEL);
+    gdt[SEG_TSS] = SEGTSS(STS_T32A, (uintptr_t)ts, sizeof(struct taskstate), DPL_KERNEL);
+    // Map cpu, and curproc
+    gdt[SEG_KCPU] = SEG(STA_W, (uintptr_t)(&(c->cpu)), 8, 0);
+
+    struct pseudodesc gdt_pd = {
+        sizeof(c->gdt) - 1, (uintptr_t)gdt
+    };
 
     // reload all segment registers
     lgdt(&gdt_pd);
 
+    load_gs(GD_KCPU);
     // load the TSS
     ltr(GD_TSS);
+
+    // Initialize cpu-local storage.
+    cpu = c;
+    current = 0;
 }
 
 //init_pmm_manager - initialize a pmm_manager instance
@@ -357,9 +364,12 @@ pmm_init(void) {
 void
 pmm_init_ap() {
     boot_pgdir[0] = boot_pgdir[PDX(KERNBASE)];
+    // hack for lapic whose paddr was mapped to KERNTOP
+    boot_pgdir[PDX(KERNTOP-KERNBASE)] = boot_pgdir[PDX(KERNTOP)];
     enable_paging();
     gdt_init();
     boot_pgdir[0] = 0;
+    boot_pgdir[PDX(KERNTOP-KERNBASE)] = 0;
 }
 
 //get_pte - get pte and return the kernel virtual address of this pte for la

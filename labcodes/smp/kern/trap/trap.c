@@ -248,6 +248,7 @@ trap_dispatch(struct trapframe *tf) {
             // print_ticks(); //or it will panic
             current->need_resched = 1;
         }
+        lapiceoi();
         break;
     case IRQ_OFFSET + IRQ_COM1:
     case IRQ_OFFSET + IRQ_KBD:
@@ -257,6 +258,7 @@ trap_dispatch(struct trapframe *tf) {
           extern void dev_stdin_write(char c);
           dev_stdin_write(c);
         }
+        lapiceoi();
         break;
     //LAB1 CHALLENGE 1 : 2012011346 you should modify below codes.
     case T_SWITCH_TOU:
@@ -266,6 +268,7 @@ trap_dispatch(struct trapframe *tf) {
     case IRQ_OFFSET + IRQ_IDE1:
     case IRQ_OFFSET + IRQ_IDE2:
         /* do nothing */
+        lapiceoi();
         break;
     default:
         print_trapframe(tf);

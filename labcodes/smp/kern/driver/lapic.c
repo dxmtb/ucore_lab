@@ -43,6 +43,7 @@ lapicw(int index, int value)
 {
   lapic[index] = value;
   lapic[ID];  // wait for write to finish, by reading
+  assert(lapic[index] == value);
 }
 //PAGEBREAK!
 
@@ -51,7 +52,6 @@ lapic_init(void)
 {
   if(!lapic)
     return;
-  cprintf("enter lapic_init\n");
 
   // Enable local APIC; set spurious interrupt vector.
   lapicw(SVR, ENABLE | (IRQ_OFFSET + IRQ_SPURIOUS));
@@ -86,13 +86,11 @@ lapic_init(void)
   // Send an Init Level De-Assert to synchronise arbitration ID's.
   lapicw(ICRHI, 0);
   lapicw(ICRLO, BCAST | INIT | LEVEL);
-  cprintf("wait lapic_init\n");
   while(lapic[ICRLO] & DELIVS)
     ;
 
   // Enable interrupts on the APIC (but not on the processor).
   lapicw(TPR, 0);
-  cprintf("lapic_init finished!\n");
 }
 
 int

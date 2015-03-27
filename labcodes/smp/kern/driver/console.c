@@ -108,6 +108,7 @@ serial_init(void) {
 
     if (serial_exists) {
         pic_enable(IRQ_COM1);
+        ioapicenable(IRQ_COM1, 0);
     }
 }
 
@@ -138,6 +139,9 @@ lpt_putc(int c) {
 /* cga_putc - print character to console */
 static void
 cga_putc(int c) {
+    // console not init
+    if (!crt_buf)
+        return ;
     // set black on white
     if (!(c & ~0xFF)) {
         c |= 0x0700;
@@ -409,6 +413,7 @@ kbd_init(void) {
     // drain the kbd buffer
     kbd_intr();
     pic_enable(IRQ_KBD);
+    ioapicenable(IRQ_KBD, 0);
 }
 
 /* cons_init - initializes the console devices */

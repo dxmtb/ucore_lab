@@ -154,10 +154,28 @@ ltr(uint16_t sel) {
 }
 
 static inline uint32_t
+xchg(volatile uint32_t *addr, uint32_t newval)
+{
+  uint32_t result;
+
+  // The + in "+m" denotes a read-modify-write operand.
+  asm volatile("lock; xchgl %0, %1" :
+               "+m" (*addr), "=a" (result) :
+               "1" (newval) :
+               "cc");
+  return result;
+}
+
+static inline uint32_t
 read_eflags(void) {
     uint32_t eflags;
     asm volatile ("pushfl; popl %0" : "=r" (eflags));
     return eflags;
+}
+static inline void
+load_gs(uint16_t v)
+{
+  asm volatile("movw %0, %%gs" : : "r" (v));
 }
 
 static inline void

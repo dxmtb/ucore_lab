@@ -29,7 +29,6 @@ kern_init(void) {
     extern char edata[], end[];
     memset(edata, 0, end - edata);
 
-    cons_init();                // init the console
 
     const char *message = "(THU.CST) os is loading ...";
     cprintf("%s\n\n", message);
@@ -44,40 +43,37 @@ kern_init(void) {
         pte_t *ptep = get_pte(boot_pgdir, KERNTOP, 1);
         assert(ptep != NULL);
         *ptep = (int32_t)lapic | PTE_P | PTE_W;
-        lapic = KERNTOP;
+        lapic = (void *)KERNTOP;
     }
     lapic_init();
-
     pic_init();                 // init interrupt controller
     if (ismp) {
 #define IOAPIC  0xFEC00000   // Default physical address of IO APIC
         pte_t *ptep = get_pte(boot_pgdir, KERNTOP + PGSIZE, 1);
         assert(ptep != NULL);
         *ptep = IOAPIC | PTE_P | PTE_W;
-        ioapic = KERNTOP + PGSIZE;
+        ioapic = (void *)(KERNTOP + PGSIZE);
     }
     ioapic_init();              // another interrupt controller
+    cons_init();                // init the console
     idt_init();                 // init interrupt descriptor table
 
     vmm_init();                 // init virtual memory management
     sched_init();               // init scheduler
     proc_init();                // init process table
-    
+
     ide_init();                 // init ide devices
     swap_init();                // init swap
     fs_init();                  // init fs
-    
+
     if(!ismp)
         clock_init();           // init clock interrupt
     startothers();   // start other processors
 
-    intr_enable();              // enable irq interrupt
-
     //LAB1: CAHLLENGE 1 If you try to do it, uncomment lab1_switch_test()
     // user/kernel mode switch test
     //lab1_switch_test();
-    
-    cpu_idle();                 // run idle process
+    mpmain();
 }
 
 // Other CPUs jump here from entryother.S.
@@ -93,12 +89,15 @@ mpenter(void)
 void
 mpmain(void)
 {
-  //cprintf("cpu%d: starting\n", cpu->id);
-    cprintf("i am a cpu\n");
-    while(1);
-//  idtinit();       // load idt register
-//  xchg(&cpu->started, 1); // tell startothers() we're up
-//  scheduler();     // start running processes
+    xchg(&cpu->started, 1); // tell startothers() we're up
+    idt_init();
+    if (cpu->id == 0)
+        intr_enable();              // enable irq interrupt
+    cprintf("CPU%d: started\n", cpu->id);
+    if (cpu->id == 0)
+        cpu_idle();                 // run idle process
+    else
+        while(1);
 }
 
 // Start the non-boot (AP) processors.
@@ -120,7 +119,6 @@ startothers(void)
     for(c = cpus; c < cpus+ncpu; c++){
         if(c == cpus+cpunum())  // We've started already.
             continue;
-        cprintf("Try to start cpu %x\n", c);
 
         // Tell entryother.S what stack to use, where to enter, and what
         // pgdir to use. We cannot use kpgdir yet, because the AP processor
@@ -135,7 +133,7 @@ startothers(void)
         // wait for cpu to finish mpmain()
         while(c->started == 0) ;
     }
-    while(1);
+    cprintf("All CPU started!\n");
 }
 
 void __attribute__((noinline))
