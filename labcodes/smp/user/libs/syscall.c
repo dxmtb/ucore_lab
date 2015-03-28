@@ -64,6 +64,11 @@ sys_getpid(void) {
 }
 
 int
+sys_getcpu(void) {
+    return syscall(SYS_getcpu);
+}
+
+int
 sys_putc(int c) {
     return syscall(SYS_putc, c);
 }

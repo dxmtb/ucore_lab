@@ -32,10 +32,12 @@ sched_class_pick_next(void) {
 
 static void
 sched_class_proc_tick(struct proc_struct *proc) {
-    if (proc != idleproc) {
+    if (proc->pid != 0) {
         sched_class->proc_tick(rq, proc);
     }
     else {
+        // should be idle proc
+        assert(strcmp(proc->name, "idle") == 0);
         proc->need_resched = 1;
     }
 }
@@ -169,7 +171,9 @@ run_timer_list(void) {
                 timer = le2timer(le, timer_link);
             }
         }
-        sched_class_proc_tick(current);
+        int i;
+        for (i = 0; i < ncpu; i++)
+            sched_class_proc_tick(cpus[i].current);
     }
     local_intr_restore(intr_flag);
 }

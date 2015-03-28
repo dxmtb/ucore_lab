@@ -125,6 +125,9 @@ stride_pick_next(struct run_queue *rq) {
     list_entry_t *le = &(rq->run_list);
     while ((le = list_next(le)) != &(rq->run_list)) {
         struct proc_struct *p = le2proc(le, run_link);
+        // Skip idleproc not on this cpu
+        if (p->pid == 0 && p != cpu->idleproc)
+            continue;
         if (ret == NULL || p->lab6_stride < ret->lab6_stride)
             ret = p;
     }

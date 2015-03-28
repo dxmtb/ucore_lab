@@ -55,6 +55,11 @@ getpid(void) {
     return sys_getpid();
 }
 
+int
+getcpu(void) {
+    return sys_getcpu();
+}
+
 //print_pgdir - print the PDT&PT
 void
 print_pgdir(void) {

@@ -89,15 +89,14 @@ mpenter(void)
 void
 mpmain(void)
 {
+    assert(cpu->id == cpunum());
+    proc_init2();
     xchg(&cpu->started, 1); // tell startothers() we're up
     idt_init();
     if (cpu->id == 0)
         intr_enable();              // enable irq interrupt
     cprintf("CPU%d: started\n", cpu->id);
-    if (cpu->id == 0)
-        cpu_idle();                 // run idle process
-    else
-        while(1);
+    cpu_idle();                 // run idle process
 }
 
 // Start the non-boot (AP) processors.

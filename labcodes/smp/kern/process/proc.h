@@ -24,6 +24,7 @@ struct cpu {
   // Cpu-local storage variables; see below
   struct cpu *cpu;
   struct proc *current;           // The currently-running process.
+  struct proc *idleproc;           // The currently-running process.
 };
 
 extern struct cpu cpus[];
@@ -39,6 +40,8 @@ extern int ncpu;
 // in thread libraries such as Linux pthreads.
 extern struct cpu *cpu asm("%gs:0");       // &cpus[cpunum()]
 extern struct proc_struct *current asm("%gs:4");     // cpus[cpunum()].proc
+// idle proc
+extern struct proc_struct *idleproc asm("%gs:8");
 
 // process's state in his life cycle
 enum proc_state {

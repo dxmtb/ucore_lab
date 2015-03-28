@@ -73,8 +73,6 @@ list_entry_t proc_list;
 // has list for process set based on pid
 static list_entry_t hash_list[HASH_LIST_SIZE];
 
-// idle proc
-struct proc_struct *idleproc = NULL;
 // init proc
 struct proc_struct *initproc = NULL;
 
@@ -753,7 +751,7 @@ load_icode(int fd, int argc, char **kargv) {
         assert((argvi = pgdir_alloc_page(mm->pgdir, start2, PTE_USER)) != NULL);
         start = page2kva(argvi);
         memcpy(start, kargv[i], EXEC_MAX_ARG_LEN + 1);
-        cprintf("Copied %s to %x\n", start, start2);
+        // cprintf("Copied %s to %x\n", start, start2);
         // push start2
         start = start2;
         memcpy(stack_top - sizeof(void*), &start, sizeof(void*));
@@ -769,7 +767,7 @@ load_icode(int fd, int argc, char **kargv) {
     tf->tf_esp = USTACKTOP - push_size;
     tf->tf_eip = elf->e_entry;
     tf->tf_eflags = FL_IF;
-    cprintf("Proc argc %d argv %s\n", argc, *kargv);
+    // cprintf("Proc argc %d argv %s\n", argc, *kargv);
     ret = 0;
 out:
     return ret;
@@ -1039,7 +1037,7 @@ init_main(void *arg) {
         
     cprintf("all user-mode processes have quit.\n");
     assert(initproc->cptr == NULL && initproc->yptr == NULL && initproc->optr == NULL);
-    assert(nr_process == 2);
+    cprintf("number of process: %d\n", nr_process);
     assert(list_next(&proc_list) == &(initproc->list_link));
     assert(list_prev(&proc_list) == &(initproc->list_link));
 
@@ -1057,7 +1055,10 @@ proc_init(void) {
     for (i = 0; i < HASH_LIST_SIZE; i ++) {
         list_init(hash_list + i);
     }
+}
 
+void
+proc_init2(void) {
     if ((idleproc = alloc_proc()) == NULL) {
         panic("cannot alloc idleproc.\n");
     }
@@ -1077,16 +1078,18 @@ proc_init(void) {
 
     current = idleproc;
 
-    int pid = kernel_thread(init_main, NULL, 0);
-    if (pid <= 0) {
-        panic("create init_main failed.\n");
+    if (cpu->id == 0) {
+        int pid = kernel_thread(init_main, NULL, 0);
+        if (pid <= 0) {
+            panic("create init_main failed.\n");
+        }
+
+        initproc = find_proc(pid);
+        set_proc_name(initproc, "init");
+        assert(initproc != NULL && initproc->pid == 1);
     }
 
-    initproc = find_proc(pid);
-    set_proc_name(initproc, "init");
-
     assert(idleproc != NULL && idleproc->pid == 0);
-    assert(initproc != NULL && initproc->pid == 1);
 }
 
 // cpu_idle - at the end of kern_init, the first kernel thread idleproc will do below works

@@ -56,6 +56,11 @@ sys_getpid(uint32_t arg[]) {
 }
 
 static int
+sys_getcpu(uint32_t arg[]) {
+    return cpunum();
+}
+
+static int
 sys_putc(uint32_t arg[]) {
     int c = (int)arg[0];
     cputchar(c);
@@ -180,6 +185,7 @@ static int (*syscalls[])(uint32_t arg[]) = {
     [SYS_getcwd]            sys_getcwd,
     [SYS_getdirentry]       sys_getdirentry,
     [SYS_dup]               sys_dup,
+    [SYS_getcpu]            sys_getcpu,
 };
 
 #define NUM_SYSCALLS        ((sizeof(syscalls)) / (sizeof(syscalls[0])))
